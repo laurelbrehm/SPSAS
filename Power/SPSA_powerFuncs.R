@@ -45,24 +45,48 @@ powerFunc2Gr(1,1,2,1,10)
 ## because we're sampling, we get different results!
 ## so, embed in function 'replicate' to run repeatedly.
 out <- replicate(1000,powerFunc2Gr(m1=1,sd1=1,m2=2,sd2=1,n=100))
-power <- mean(out<0.05)
+power01 <- mean(out<0.05)
 ## show the output
-power
+power01
 
 ## can also get more elaborate: loop over multiple sample sizes!
 ## look at increasing samples by 10 over 10 steps
 ## make a small data frame to put this in:
-power <- rbind(seq(1:10)*10,rep(0,10))
-rownames(power)<- c("totalN","power")
+power02 <- rbind(seq(1:10)*10,rep(0,10))
+rownames(power02)<- c("totalN","power")
 
-## here, we loop over s for subjects. we could loop over any of the input variables.
+## now, we loop over values s for subjects. we could loop over any of the input variables.
 for(s in 1:10){
   out <- replicate(1000,powerFunc2Gr(1,1,2,1,s*10))  ##the default is that the inputs will be assigned to variables in the same order as defined when you wrote the function
-  power[2,s] = mean(out<0.05)
+  power02[2,s] = mean(out<0.05)
 }
-
 ## show the output
-power
+power02
+
+
+## same exercise, but looping over effect size, two dimensionally-- and we can plot it
+## we will create a plot of effect size in terms of cohen's d = (m1-m2)/sd
+## (if m1 and sd are always 1, then we can get different cohen's d values by increasing m2)
+## https://en.wikipedia.org/wiki/Effect_size#Cohen's_d
+power03=matrix(nrow=50,ncol=9)
+rownames(power03)=paste0('subs=',1:50*10)
+colnames(power03)=paste0('d=0.',1:9)
+
+## now, we loop over values s for subjects, and d for cohen's d value (effect size)
+## this one's a bit slow- need replicates= 5000 for a really nice plot. run smaller to see effects yourself
+## 
+for(d in 1:9){
+  for(s in 1:50){
+    out <- replicate(500,powerFunc2Gr(1,1,1+(d*.1),1,s*10))  ##the default is that the inputs will be assigned to variables in the same order as defined when you wrote the function
+    power03[s,d] = mean(out<0.05)
+}}
+## show the output
+power03
+
+contour(x=(1:50*10),y=(1:9*.1),z=power03,
+        xlab='sample size',ylab='cohen d',col=c(rep('gray',8),rep('black',3)))
+### realistic social science effect sizes are .5 and below: you need more observations than you think you do
+
 
 ### 2x2 fully-crossed, Latin-square design with two repeated measures
 ## here's what that means:
@@ -164,6 +188,7 @@ powerFuncLMB<- function(s,i){
   lmer1 <- suppressMessages(lmer(rs~v1*v2 + (1+v1+v2|ii) + (1+v1+v2|ss),ds,REML=F,
                                  control = lmerControl(calc.derivs = FALSE)))
   ### suppress the warning messages since I know we'll get a lot of singular fit warnings
+  ### suppress calc.derivs to speed up performance
   
   ## to test p-values from a mixed effect model, compare to a model without the effect of interest
   ## examine that interaction: it should have power = .05 (our alpha/significance level)
@@ -173,26 +198,27 @@ powerFuncLMB<- function(s,i){
   ps  
 }
 
-## I'd usually run this at 1000 replicates, but the code is slow:
+## I'd usually run this at 1000 replicates, but for speed here, run only 100:
 out <- replicate(100,powerFuncLMB(s=12,i=24))
 summary(out)
-power<- mean(out<0.05)   ###power is at just about 0.05-- what we expect!
-power
+power04<- mean(out<0.05)   ###power is at just about 0.05-- what we expect!
+power04
 
-## run again with fewer samples
+## run again with fewer samples (fewer s, fewer i)
 out <- replicate(100,powerFuncLMB(s=4,i=4))
-power <- mean(out<0.05) 
-power
+power05 <- mean(out<0.05) 
+power05
 
-## with few subjects, few items, and few replicates, the power level can be pretty divergent from what we expect
+## with few subjects, few items, the power level can be pretty divergent from what we expect
 ## this is why underpowered designs can reflect false positives
-## make sure to run enough replicates that you're estimating the central tendency of the effect, not the extremes
+## it's the same reason why you need to run these simulations many times to see a 'true' result'
+## make sure to run enough replicates in R and in real life so that you're estimating the central tendency of the effect, not the extremes
 
 
 
-## now let's make 2 changes
-## change the DV to be a binomial (0/1) variable
-## create the data set using 'faux' package
+## here's a version of a power analysis for a real study
+## this one uses a binomial (0/1) DV
+## also create the data set using 'faux' package
 ## I'm going to use this to calculate power for Bethany's thesis study on memory and prosody--
 ## it is a replication of Fraundorf et al 2010, in the visual world paradigm.  
 ## https://www.ncbi.nlm.nih.gov/pmc/articles/PMC2935187/
@@ -204,7 +230,9 @@ power
 #### dv = memory for items based upon prosody, 2x2 design
 ## accented = word is pitch-accented or not (levels: LHStar, Hstar, contrasts .5, -.5)
 ## position =  (levels: First, Second, contrasts .5, -.5)
-## we can reconstruct means and ses for each beta using the model table in the paper
+## we can reconstruct means for each beta using the model table in the paper
+## we can consider these a high-end estimate of the effect size 
+## (an effect the same size as before, which could be inflated)
 intercept = 1.92
 accented = 1.21 * c(-.5,0.5)
 position = 0.32 * c(-.5,0.5)
@@ -213,8 +241,13 @@ betas = c(intercept + accented[1] + position[1] + interaction[1],
           intercept + accented[1] + position[2] + interaction[2],
           intercept + accented[2] + position[1] + interaction[3],
           intercept + accented[2] + position[2] + interaction[4])
-probs = inv.logit(betas)
-
+probs1 = inv.logit(betas)
+### then we can also create a smaller, but still reasonable effect size
+## this one has a difference that's 2/3 of the original size (10%, not 15%)
+## it would still be an effect size we'd care about, so let's make sure we have power to observe it
+## the technical term here is 'SESOI'-- smallest effect size of interest
+## do this by adding .05 to each of the first two (smaller) numbers
+probs2 = probs1 + c(.05,.05,0,0)
 
 powerFuncBMB<- function(s,i,probs){
     ## first, create the data set with faux
@@ -250,9 +283,20 @@ powerFuncBMB<- function(s,i,probs){
        ds[ds$y > 1,]$y <- 1} else{}
     if(dim(ds[ds$y < 0 ,])[1]!=0){
        ds[ds$y < 0,]$y <- 0} else{}
-
-   ## take the probability values and turn them into a binomial
+    
+    ## take the probability values and turn them into a binomial
     ds$y_binom <- rbinom(s*i,size=1,prob=ds$y)
+    
+    ##reassign the first value if there's complete separation of values as ones 
+    ##(would need to do similar in the other direction if proportions are quite close to zero)
+    ifelse(mean(ds[ds$accented == "HStar" & ds$position=="First",]$y_binom) == 1,
+        ds[ds$accented == "HStar" & ds$position=="First",]$y_binom <- c(0,rep(1,(i*s/g-1) )),'ok')
+    ifelse(mean(ds[ds$accented == "HStar" & ds$position=="Second",]$y_binom) == 1,
+        ds[ds$accented == "HStar" & ds$position=="Second",]$y_binom <- c(0,rep(1,(i*s/g-1) )),'ok')
+    ifelse(mean(ds[ds$accented == "LHStar" & ds$position=="First",]$y_binom) == 1,
+        ds[ds$accented == "LHStar" & ds$position=="First",]$y_binom <- c(0,rep(1,(i*s/g-1) )),'ok')
+    ifelse(mean(ds[ds$accented == "LHStar" & ds$position=="Second",]$y_binom) == 1, 
+        ds[ds$accented == "LHStar" & ds$position=="Second",]$y_binom <- c(0,rep(1,(i*s/g-1) )),'ok')
     
     ## set contrasts
     contrasts(ds$accented) <- c(-.5,0.5)   
@@ -266,12 +310,19 @@ powerFuncBMB<- function(s,i,probs){
     unlist(summary(glmer1)[10])[14]
 }
 
-## make a small data frame to put this in:
-power <- rbind(seq(1:6)*8,rep(0,6))
-rownames(power)<- c("totalN","power")
+## make 2 small data frames to put the results in:
+bpower1 <- rbind(seq(1:6)*8,rep(0,6))
+rownames(bpower1)<- c("totalN","power")
+bpower2 <- bpower1
 
 ## here, we loop over s for subjects. we could loop over any of the input variables.
+## do for both effect sizes-- the original, and the 67%
 for(ss in 1:6){
-  out <- replicate(1000,powerFuncBMB(s=ss*8,i=20,probs=probs))
-  power[2,ss] = mean(out<0.05)}
-power
+  out <- replicate(100,powerFuncBMB(s=ss*8,i=20,probs=probs1))
+  bpower1[2,ss] = mean(out<0.05)}
+bpower1
+
+for(ss in 1:6){
+  out <- replicate(100,powerFuncBMB(s=ss*8,i=20,probs=probs2))
+  bpower2[2,ss] = mean(out<0.05)}
+bpower2
